@@ -11,14 +11,25 @@ import type { Stats } from "node:fs";
 import { mkdirSync } from "node:fs";
 import { mkdir, readdir } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
-import { pathToFileURL } from "node:url";
 
 type S3WriteData = Parameters<S3Client["write"]>[1];
 type S3ListCredentials = Parameters<S3Client["list"]>[1];
 type LocalNetworkSink = ReturnType<S3File["writer"]>;
+type PresignMethod = NonNullable<S3FilePresignOptions["method"]>;
 
 const DEFAULT_LOCAL_S3_ROOT = ".local/s3";
 const DEFAULT_LOCAL_BUCKET = "local";
+const DEFAULT_PRESIGN_EXPIRY_SECONDS = 60 * 60 * 24;
+const LOCAL_PRESIGN_ROUTE_PREFIX = "/__local-s3/presigned/";
+
+type LocalPresignedRequest = {
+  fullPath: string;
+  method: PresignMethod;
+  expiresAt: number;
+};
+
+const localPresignedRequests = new Map<string, LocalPresignedRequest>();
+let localPresignServer: ReturnType<typeof Bun.serve> | undefined;
 
 export type LocalS3Options = S3Options & {
   root?: string;
@@ -58,6 +69,193 @@ function decodeContinuationToken(token: string | undefined): string | undefined 
 
 function makeLocalEtag(size: number, modifiedMs: number): string {
   return `${size.toString(16)}-${Math.trunc(modifiedMs).toString(16)}`;
+}
+
+function pruneExpiredPresignedRequests(now = Date.now()): void {
+  for (const [token, value] of localPresignedRequests) {
+    if (value.expiresAt <= now) {
+      localPresignedRequests.delete(token);
+    }
+  }
+}
+
+function corsHeaders(request?: Request): Record<string, string> {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, HEAD, PUT, POST, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": request?.headers.get("access-control-request-headers") ?? "*",
+    "Access-Control-Expose-Headers": "Content-Type, Content-Length, ETag, Last-Modified",
+  };
+}
+
+function responseWithCors(response: Response, request?: Request): Response {
+  const headers = new Headers(response.headers);
+  for (const [key, value] of Object.entries(corsHeaders(request))) {
+    headers.set(key, value);
+  }
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+async function readPresignedUploadBody(request: Request): Promise<string | Blob | Request> {
+  const contentType = request.headers.get("content-type")?.toLowerCase() ?? "";
+
+  if (request.method === "POST" && contentType.includes("multipart/form-data")) {
+    const form = await request.formData();
+    const explicitFile = form.get("file");
+
+    if (explicitFile instanceof Blob || typeof explicitFile === "string") {
+      return explicitFile;
+    }
+
+    for (const value of form.values()) {
+      if (value instanceof Blob || typeof value === "string") {
+        return value;
+      }
+    }
+
+    throw new Error("Presigned POST request did not include an upload body");
+  }
+
+  return request;
+}
+
+async function handleLocalPresignedRequest(request: Request): Promise<Response> {
+  const url = new URL(request.url);
+
+  if (!url.pathname.startsWith(LOCAL_PRESIGN_ROUTE_PREFIX)) {
+    return new Response("Not Found", { status: 404, headers: corsHeaders(request) });
+  }
+
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: corsHeaders(request) });
+  }
+
+  const token = url.pathname.slice(LOCAL_PRESIGN_ROUTE_PREFIX.length).split("/")[0];
+  const entry = token ? localPresignedRequests.get(token) : undefined;
+
+  if (!entry) {
+    return new Response("Invalid presigned URL", { status: 404, headers: corsHeaders(request) });
+  }
+
+  if (token && entry.expiresAt <= Date.now()) {
+    localPresignedRequests.delete(token);
+    return new Response("Presigned URL expired", { status: 403, headers: corsHeaders(request) });
+  }
+
+  if (request.method !== entry.method) {
+    return new Response(`Method ${request.method} not allowed`, {
+      status: 405,
+      headers: {
+        ...corsHeaders(request),
+        Allow: `${entry.method}, OPTIONS`,
+      },
+    });
+  }
+
+  const file = Bun.file(entry.fullPath);
+
+  try {
+    switch (entry.method) {
+      case "GET": {
+        if (!(await file.exists())) {
+          return new Response("Not Found", { status: 404, headers: corsHeaders(request) });
+        }
+
+        const stats = await file.stat();
+        const modified = stats.mtime ?? new Date(stats.mtimeMs);
+        const headers = new Headers({
+          "Content-Type": file.type || "application/octet-stream",
+          "Content-Length": String(stats.size),
+          "Last-Modified": modified.toUTCString(),
+          ETag: makeLocalEtag(stats.size, modified.getTime()),
+        });
+
+        return responseWithCors(new Response(file, { status: 200, headers }), request);
+      }
+
+      case "HEAD": {
+        if (!(await file.exists())) {
+          return new Response(null, { status: 404, headers: corsHeaders(request) });
+        }
+
+        const stats = await file.stat();
+        const modified = stats.mtime ?? new Date(stats.mtimeMs);
+        const headers = new Headers({
+          "Content-Type": file.type || "application/octet-stream",
+          "Content-Length": String(stats.size),
+          "Last-Modified": modified.toUTCString(),
+          ETag: makeLocalEtag(stats.size, modified.getTime()),
+        });
+
+        return responseWithCors(new Response(null, { status: 200, headers }), request);
+      }
+
+      case "PUT":
+      case "POST": {
+        await mkdir(dirname(entry.fullPath), { recursive: true });
+        const body = await readPresignedUploadBody(request);
+        const bytesWritten = await Bun.write(entry.fullPath, body as never);
+
+        const status = entry.method === "POST" ? 204 : 200;
+        return new Response(entry.method === "PUT" ? String(bytesWritten) : null, {
+          status,
+          headers: corsHeaders(request),
+        });
+      }
+
+      case "DELETE": {
+        try {
+          await file.delete();
+        } catch (error) {
+          if (!isEnoent(error)) {
+            throw error;
+          }
+        }
+
+        return new Response(null, { status: 204, headers: corsHeaders(request) });
+      }
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Local presigned request failed";
+    return new Response(message, { status: 500, headers: corsHeaders(request) });
+  }
+}
+
+function getOrCreateLocalPresignServer(): ReturnType<typeof Bun.serve> {
+  if (localPresignServer) {
+    return localPresignServer;
+  }
+
+  localPresignServer = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: handleLocalPresignedRequest,
+  });
+  localPresignServer.unref();
+
+  return localPresignServer;
+}
+
+function createLocalPresignedUrl(fullPath: string, method: PresignMethod, expiresInSeconds?: number): string {
+  pruneExpiredPresignedRequests();
+
+  const token = crypto.randomUUID();
+  const expiresIn = Math.max(0, Math.trunc(expiresInSeconds ?? DEFAULT_PRESIGN_EXPIRY_SECONDS));
+  const expiresAt = Date.now() + expiresIn * 1000;
+
+  localPresignedRequests.set(token, {
+    fullPath,
+    method,
+    expiresAt,
+  });
+
+  const server = getOrCreateLocalPresignServer();
+  return new URL(`${LOCAL_PRESIGN_ROUTE_PREFIX}${token}`, server.url).toString();
 }
 
 async function collectObjectKeys(root: string, current = ""): Promise<string[]> {
@@ -334,9 +532,10 @@ export class LocalS3Client implements Pick<
   }
 
   presign(path: string, options?: S3FilePresignOptions): string {
-    const merged = this.#mergeOptions(options);
+    const merged = this.#mergeOptions(options) as S3FilePresignOptions;
     const { fullPath } = this.#resolvePath(path, merged);
-    return pathToFileURL(fullPath).toString();
+    const method = merged.method ?? "GET";
+    return createLocalPresignedUrl(fullPath, method, merged.expiresIn);
   }
 
   async unlink(path: string, options?: S3Options): Promise<void> {
