@@ -3,8 +3,7 @@
   "private": true,
   "scripts": {
     "bootstrap": "bun scripts/bootstrap-dev.ts",
-    "dev": "bun --filter \"distra-*\" dev",
-    "postinstall": "bun run bootstrap"
+    "dev": "bun --filter \"distra-*\" dev"
   },
   "workspaces": [
     "app",
