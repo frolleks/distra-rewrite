@@ -7,7 +7,6 @@ import {
 } from "@/client/components/ui/card";
 import logo from "@/client/logo.svg";
 import reactLogo from "@/client/react.svg";
-import { ThemeToggle } from "@/client/components/theme/theme-toggle";
 
 export default function Root() {
   return (
