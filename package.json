@@ -1,14 +1,11 @@
 {
   "name": "distra-rewrite",
   "private": true,
-  "workspaces": [
-    "app/",
-    "packages/*"
-  ],
-  "devDependencies": {
-    "@types/bun": "latest"
+  "scripts": {
+    "dev": "bun --filter \"distra-*\" dev"
   },
-  "peerDependencies": {
-    "typescript": "^5"
-  }
+  "workspaces": [
+    "app",
+    "packages/*"
+  ]
 }
