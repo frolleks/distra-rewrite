@@ -2,7 +2,9 @@
   "name": "distra-rewrite",
   "private": true,
   "scripts": {
-    "dev": "bun --filter \"distra-*\" dev"
+    "bootstrap": "bun scripts/bootstrap-dev.ts",
+    "dev": "bun --filter \"distra-*\" dev",
+    "postinstall": "bun run bootstrap"
   },
   "workspaces": [
     "app",
