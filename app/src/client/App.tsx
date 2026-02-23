@@ -11,6 +11,7 @@ import logo from "./logo.svg";
 import reactLogo from "./react.svg";
 import { Routes, Route } from "react-router-dom";
 import AuthPage from "./pages/auth/page";
+import { ThemeToggle } from "./components/theme/theme-toggle";
 
 export function App() {
   return (
@@ -33,6 +34,7 @@ export function App() {
                     className="h-36 p-6 transition-all duration-300 hover:drop-shadow-[0_0_2em_#61dafbaa] animate-[spin_20s_linear_infinite]"
                   />
                 </div>
+                <ThemeToggle />
                 <Card>
                   <CardHeader className="gap-4">
                     <CardTitle className="text-3xl font-bold">
