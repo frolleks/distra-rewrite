@@ -3,6 +3,7 @@ import { Button } from "../ui/button";
 import { NavLink } from "react-router-dom";
 import { ThemeToggle } from "../theme/theme-toggle";
 import { authClient } from "@/client/lib/auth";
+import { UserAccountNav } from "../auth/user-account-nav";
 
 export function Navbar() {
   const { data: session } = authClient.useSession();
@@ -15,7 +16,9 @@ export function Navbar() {
         </div>
         <div className="flex items-center gap-1.5">
           <ThemeToggle />
-          <SignedIn>Hello, {session?.user.name}!</SignedIn>
+          <SignedIn>
+            {session && <UserAccountNav user={session?.user} />}
+          </SignedIn>
           <SignedOut>
             <NavLink to="/auth/sign-in">
               <Button className="cursor-pointer">Sign in</Button>
