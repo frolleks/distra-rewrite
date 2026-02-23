@@ -1,5 +1,6 @@
 import { serve } from "bun";
 import index from "./client/index.html";
+import { auth } from "./server/auth";
 
 const server = serve({
   routes: {
@@ -27,6 +28,8 @@ const server = serve({
         message: `Hello, ${name}!`,
       });
     },
+
+    "/api/auth/*": async (req) => auth.handler(req),
   },
 
   development: process.env.NODE_ENV !== "production" && {
