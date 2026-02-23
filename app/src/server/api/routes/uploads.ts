@@ -22,12 +22,10 @@ async function GET(req: BunRequest) {
 }
 
 export async function uploadsHandler(req: BunRequest) {
-  const session = await auth.api.getSession();
+  const session = await auth.api.getSession({ headers: req.headers });
 
   if (session) {
-    if (req.method === "GET") {
-      return GET(req);
-    }
+    return GET(req);
   }
 
   return Response.json(
