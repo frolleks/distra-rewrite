@@ -1,6 +1,8 @@
 import { serve } from "bun";
 import index from "./client/index.html";
 import { auth } from "./server/auth";
+import { uploadsHandler } from "./server/api/routes/uploads";
+import { getVideo, postVideo } from "./server/api/routes/videos";
 
 const server = serve({
   routes: {
@@ -30,6 +32,11 @@ const server = serve({
     },
 
     "/api/auth/*": async (req) => auth.handler(req),
+
+    "/api/uploads": async (req) => uploadsHandler(req),
+
+    "/api/videos": async (req) => postVideo(req),
+    "/api/videos/:id": async (req) => getVideo(req),
   },
 
   development: process.env.NODE_ENV !== "production" && {

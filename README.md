@@ -1,15 +1,3 @@
 # distra-rewrite
 
-To install dependencies:
-
-```bash
-bun install
-```
-
-To run:
-
-```bash
-bun run index.ts
-```
-
-This project was created using `bun init` in bun v1.3.9. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
+This project is rewritten to minimize vibecoded code, like those in the predecessor. Although there are some parts that are totally vibecoded (the S3 client package), the rest are not.

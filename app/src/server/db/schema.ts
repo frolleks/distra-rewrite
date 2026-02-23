@@ -77,9 +77,31 @@ export const verification = sqliteTable(
   (table) => [index("verification_identifier_idx").on(table.identifier)],
 );
 
+export const video = sqliteTable(
+  "video",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    title: text("title").notNull(),
+    description: text("description"),
+    videoKey: text("video_key").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+  },
+  (table) => [index("video_userId_idx").on(table.userId)],
+);
+
+export const pendingUpload = sqliteTable("pending_upload", {
+  id: text("id").primaryKey(),
+  expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+});
+
 export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),
   accounts: many(account),
+  videos: many(video),
 }));
 
 export const sessionRelations = relations(session, ({ one }) => ({
@@ -92,6 +114,13 @@ export const sessionRelations = relations(session, ({ one }) => ({
 export const accountRelations = relations(account, ({ one }) => ({
   user: one(user, {
     fields: [account.userId],
+    references: [user.id],
+  }),
+}));
+
+export const videoRelations = relations(video, ({ one }) => ({
+  user: one(user, {
+    fields: [video.userId],
     references: [user.id],
   }),
 }));
