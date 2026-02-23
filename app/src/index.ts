@@ -33,7 +33,7 @@ const server = serve({
 
     "/api/auth/*": async (req) => auth.handler(req),
 
-    "/api/uploads": async (req) => uploadsHandler(req),
+    "/api/upload": async (req) => uploadsHandler(req),
 
     "/api/videos": async (req) => postVideo(req),
     "/api/videos/:id": async (req) => getVideo(req),
