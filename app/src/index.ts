@@ -1,5 +1,5 @@
 import { serve } from "bun";
-import index from "./index.html";
+import index from "./client/index.html";
 
 const server = serve({
   routes: {
@@ -21,7 +21,7 @@ const server = serve({
       },
     },
 
-    "/api/hello/:name": async req => {
+    "/api/hello/:name": async (req) => {
       const name = req.params.name;
       return Response.json({
         message: `Hello, ${name}!`,
@@ -36,6 +36,7 @@ const server = serve({
     // Echo console logs from the browser to the server
     console: true,
   },
+  port: 3002,
 });
 
 console.log(`🚀 Server running at ${server.url}`);
