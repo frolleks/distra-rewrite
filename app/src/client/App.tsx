@@ -7,6 +7,7 @@ import { RootLayout } from "./components/layout/root";
 import AuthPage from "./pages/auth/page";
 import RootPage from "./pages/root/page";
 import UploadPage from "./pages/upload/page";
+import WatchPage from "./pages/watch/page";
 
 export function App() {
   return (
@@ -15,6 +16,7 @@ export function App() {
         <Route path="/" element={<RootLayout />}>
           <Route index element={<RootPage />} />
           <Route path="/upload" element={<UploadPage />} />
+          <Route path="/watch" element={<WatchPage />} />
         </Route>
 
         <Route path="/auth/:pathname" element={<AuthPage />} />
