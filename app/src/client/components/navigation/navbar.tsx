@@ -4,6 +4,7 @@ import { NavLink } from "react-router-dom";
 import { ThemeToggle } from "../theme/theme-toggle";
 import { authClient } from "@/client/lib/auth";
 import { UserAccountNav } from "../auth/user-account-nav";
+import { Upload } from "lucide-react";
 
 export function Navbar() {
   const { data: session } = authClient.useSession();
@@ -17,6 +18,14 @@ export function Navbar() {
         <div className="flex items-center gap-1.5">
           <ThemeToggle />
           <SignedIn>
+            <NavLink to="/upload">
+              <Button className="cursor-pointer">
+                <span className="flex items-center gap-1">
+                  <Upload /> Upload
+                </span>
+              </Button>
+            </NavLink>
+
             {session && <UserAccountNav user={session?.user} />}
           </SignedIn>
           <SignedOut>

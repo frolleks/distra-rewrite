@@ -29,24 +29,27 @@ async function POST(req: BunRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
 
   if (session) {
-    const parsed = videoSchema.safeParse(await req.json());
+    const parsed = await videoSchema.safeParseAsync(await req.json());
 
     if (parsed.success) {
       const { title, description, key: videoKey } = parsed.data;
-      const keyExists = await db.query.pendingUpload.findFirst({
-        where: eq(pendingUpload.id, parsed.data.key),
+      const checkKey = await db.query.pendingUpload.findFirst({
+        where: eq(pendingUpload.id, videoKey),
       });
 
-      if (keyExists) {
+      if (checkKey?.id === videoKey) {
         await db.transaction(async (tx) => {
-          await tx
-            .insert(video)
-            .values({ title, description, videoKey, userId: session.user.id });
+          await tx.insert(video).values({
+            title,
+            description,
+            videoKey,
+            userId: session.user.id,
+          });
 
           await tx.delete(pendingUpload).where(eq(pendingUpload.id, videoKey));
         });
-      } else {
-        return Response.json({ error: "Bad request." }, { status: 400 });
+
+        return Response.json({ message: "Video created!" }, { status: 201 });
       }
     }
 
