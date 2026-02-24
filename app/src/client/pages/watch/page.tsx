@@ -1,4 +1,4 @@
-import { useFetchVideo } from "@/client/hooks/useFetchVideo";
+import { useFetchVideo } from "@/client/hooks/video/useFetchVideo";
 import { useSearchParams } from "react-router-dom";
 
 export default function Watch() {

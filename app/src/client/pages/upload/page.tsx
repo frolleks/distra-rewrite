@@ -2,7 +2,7 @@ import { Button } from "@/client/components/ui/button";
 import { Card, CardContent, CardFooter } from "@/client/components/ui/card";
 import { Input } from "@/client/components/ui/input";
 import { Textarea } from "@/client/components/ui/textarea";
-import { useUploadVideo } from "@/client/hooks/useUploadVideo";
+import { useUploadVideo } from "@/client/hooks/video/useUploadVideo";
 import { authClient } from "@/client/lib/auth";
 import { cn } from "@/client/lib/utils";
 import { RedirectToSignIn } from "@daveyplate/better-auth-ui";
