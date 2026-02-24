@@ -7,7 +7,7 @@ This project is rewritten to minimize vibecoded code, like those in the predeces
 ### Quickstart
 
 ```
-git clone https://github.com/frolleks/distra-rewrite && distra-rewrite
+git clone https://github.com/frolleks/distra-rewrite && cd distra-rewrite
 bun install
 bun run bootstrap
 bun run dev
