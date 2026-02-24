@@ -5,7 +5,7 @@ export async function cdnGetVideo(req: BunRequest) {
   try {
     const { id } = req.params;
 
-    const obj = Bun.file(`./data/s3/local/distra_videos/${id}.mp4`, {
+    const obj = s3.file(`distra_videos/${id}.mp4`, {
       type: "video/mp4",
     });
 
