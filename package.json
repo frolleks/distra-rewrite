@@ -3,7 +3,8 @@
   "private": true,
   "scripts": {
     "bootstrap": "bun scripts/bootstrap-dev.ts",
-    "dev": "bun --filter \"distra-*\" dev"
+    "dev": "bun --filter \"distra-*\" dev",
+    "db:migrate": "bun --filter \"distra-*\" db:migrate"
   },
   "workspaces": [
     "app",
