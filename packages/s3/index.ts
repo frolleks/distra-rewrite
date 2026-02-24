@@ -36,7 +36,12 @@ export type LocalS3Options = S3Options & {
 };
 
 function isEnoent(error: unknown): boolean {
-  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "ENOENT"
+  );
 }
 
 function normalizeKey(key: string): string {
@@ -57,11 +62,15 @@ function encodeContinuationToken(key: string): string {
   return `local:${Buffer.from(key).toString("base64url")}`;
 }
 
-function decodeContinuationToken(token: string | undefined): string | undefined {
+function decodeContinuationToken(
+  token: string | undefined,
+): string | undefined {
   if (!token?.startsWith("local:")) return undefined;
 
   try {
-    return Buffer.from(token.slice("local:".length), "base64url").toString("utf8");
+    return Buffer.from(token.slice("local:".length), "base64url").toString(
+      "utf8",
+    );
   } catch {
     return undefined;
   }
@@ -83,8 +92,10 @@ function corsHeaders(request?: Request): Record<string, string> {
   return {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, HEAD, PUT, POST, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": request?.headers.get("access-control-request-headers") ?? "*",
-    "Access-Control-Expose-Headers": "Content-Type, Content-Length, ETag, Last-Modified",
+    "Access-Control-Allow-Headers":
+      request?.headers.get("access-control-request-headers") ?? "*",
+    "Access-Control-Expose-Headers":
+      "Content-Type, Content-Length, ETag, Last-Modified",
   };
 }
 
@@ -101,50 +112,83 @@ function responseWithCors(response: Response, request?: Request): Response {
   });
 }
 
-async function readPresignedUploadBody(request: Request): Promise<string | Blob | Request> {
+async function readPresignedUploadBody(
+  request: Request,
+): Promise<string | Blob | ArrayBuffer> {
   const contentType = request.headers.get("content-type")?.toLowerCase() ?? "";
 
-  if (request.method === "POST" && contentType.includes("multipart/form-data")) {
+  if (
+    request.method === "POST" &&
+    contentType.includes("multipart/form-data")
+  ) {
     const form = await request.formData();
     const explicitFile = form.get("file");
 
-    if (explicitFile instanceof Blob || typeof explicitFile === "string") {
+    if (explicitFile instanceof Blob) {
       return explicitFile;
     }
 
+    let firstStringValue: string | undefined;
+
     for (const value of form.values()) {
-      if (value instanceof Blob || typeof value === "string") {
+      if (value instanceof Blob) {
         return value;
       }
+
+      if (typeof value === "string" && firstStringValue === undefined) {
+        firstStringValue = value;
+      }
+    }
+
+    if (typeof explicitFile === "string") {
+      return explicitFile;
+    }
+
+    if (firstStringValue !== undefined) {
+      // Fallback for non-file form uploads, but only after checking every part for a Blob/File.
+      return firstStringValue;
     }
 
     throw new Error("Presigned POST request did not include an upload body");
   }
 
-  return request;
+  return await request.arrayBuffer();
 }
 
-async function handleLocalPresignedRequest(request: Request): Promise<Response> {
+async function handleLocalPresignedRequest(
+  request: Request,
+): Promise<Response> {
   const url = new URL(request.url);
 
   if (!url.pathname.startsWith(LOCAL_PRESIGN_ROUTE_PREFIX)) {
-    return new Response("Not Found", { status: 404, headers: corsHeaders(request) });
+    return new Response("Not Found", {
+      status: 404,
+      headers: corsHeaders(request),
+    });
   }
 
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders(request) });
   }
 
-  const token = url.pathname.slice(LOCAL_PRESIGN_ROUTE_PREFIX.length).split("/")[0];
+  const token = url.pathname
+    .slice(LOCAL_PRESIGN_ROUTE_PREFIX.length)
+    .split("/")[0];
   const entry = token ? localPresignedRequests.get(token) : undefined;
 
   if (!entry) {
-    return new Response("Invalid presigned URL", { status: 404, headers: corsHeaders(request) });
+    return new Response("Invalid presigned URL", {
+      status: 404,
+      headers: corsHeaders(request),
+    });
   }
 
   if (token && entry.expiresAt <= Date.now()) {
     localPresignedRequests.delete(token);
-    return new Response("Presigned URL expired", { status: 403, headers: corsHeaders(request) });
+    return new Response("Presigned URL expired", {
+      status: 403,
+      headers: corsHeaders(request),
+    });
   }
 
   if (request.method !== entry.method) {
@@ -163,7 +207,10 @@ async function handleLocalPresignedRequest(request: Request): Promise<Response> 
     switch (entry.method) {
       case "GET": {
         if (!(await file.exists())) {
-          return new Response("Not Found", { status: 404, headers: corsHeaders(request) });
+          return new Response("Not Found", {
+            status: 404,
+            headers: corsHeaders(request),
+          });
         }
 
         const stats = await file.stat();
@@ -175,12 +222,18 @@ async function handleLocalPresignedRequest(request: Request): Promise<Response> 
           ETag: makeLocalEtag(stats.size, modified.getTime()),
         });
 
-        return responseWithCors(new Response(file, { status: 200, headers }), request);
+        return responseWithCors(
+          new Response(file, { status: 200, headers }),
+          request,
+        );
       }
 
       case "HEAD": {
         if (!(await file.exists())) {
-          return new Response(null, { status: 404, headers: corsHeaders(request) });
+          return new Response(null, {
+            status: 404,
+            headers: corsHeaders(request),
+          });
         }
 
         const stats = await file.stat();
@@ -192,7 +245,10 @@ async function handleLocalPresignedRequest(request: Request): Promise<Response> 
           ETag: makeLocalEtag(stats.size, modified.getTime()),
         });
 
-        return responseWithCors(new Response(null, { status: 200, headers }), request);
+        return responseWithCors(
+          new Response(null, { status: 200, headers }),
+          request,
+        );
       }
 
       case "PUT":
@@ -202,10 +258,13 @@ async function handleLocalPresignedRequest(request: Request): Promise<Response> 
         const bytesWritten = await Bun.write(entry.fullPath, body as never);
 
         const status = entry.method === "POST" ? 204 : 200;
-        return new Response(entry.method === "PUT" ? String(bytesWritten) : null, {
-          status,
-          headers: corsHeaders(request),
-        });
+        return new Response(
+          entry.method === "PUT" ? String(bytesWritten) : null,
+          {
+            status,
+            headers: corsHeaders(request),
+          },
+        );
       }
 
       case "DELETE": {
@@ -217,12 +276,19 @@ async function handleLocalPresignedRequest(request: Request): Promise<Response> 
           }
         }
 
-        return new Response(null, { status: 204, headers: corsHeaders(request) });
+        return new Response(null, {
+          status: 204,
+          headers: corsHeaders(request),
+        });
       }
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Local presigned request failed";
-    return new Response(message, { status: 500, headers: corsHeaders(request) });
+    const message =
+      error instanceof Error ? error.message : "Local presigned request failed";
+    return new Response(message, {
+      status: 500,
+      headers: corsHeaders(request),
+    });
   }
 }
 
@@ -241,11 +307,18 @@ function getOrCreateLocalPresignServer(): ReturnType<typeof Bun.serve> {
   return localPresignServer;
 }
 
-function createLocalPresignedUrl(fullPath: string, method: PresignMethod, expiresInSeconds?: number): string {
+function createLocalPresignedUrl(
+  fullPath: string,
+  method: PresignMethod,
+  expiresInSeconds?: number,
+): string {
   pruneExpiredPresignedRequests();
 
   const token = crypto.randomUUID();
-  const expiresIn = Math.max(0, Math.trunc(expiresInSeconds ?? DEFAULT_PRESIGN_EXPIRY_SECONDS));
+  const expiresIn = Math.max(
+    0,
+    Math.trunc(expiresInSeconds ?? DEFAULT_PRESIGN_EXPIRY_SECONDS),
+  );
   const expiresAt = Date.now() + expiresIn * 1000;
 
   localPresignedRequests.set(token, {
@@ -255,10 +328,16 @@ function createLocalPresignedUrl(fullPath: string, method: PresignMethod, expire
   });
 
   const server = getOrCreateLocalPresignServer();
-  return new URL(`${LOCAL_PRESIGN_ROUTE_PREFIX}${token}`, server.url).toString();
+  return new URL(
+    `${LOCAL_PRESIGN_ROUTE_PREFIX}${token}`,
+    server.url,
+  ).toString();
 }
 
-async function collectObjectKeys(root: string, current = ""): Promise<string[]> {
+async function collectObjectKeys(
+  root: string,
+  current = "",
+): Promise<string[]> {
   const dirPath = current ? join(root, current) : root;
   const entries = await readdir(dirPath, { withFileTypes: true });
   const keys: string[] = [];
@@ -282,7 +361,9 @@ async function collectObjectKeys(root: string, current = ""): Promise<string[]> 
 function buildNetworkSink(path: string, options?: S3Options): LocalNetworkSink {
   mkdirSync(dirname(path), { recursive: true });
 
-  const sink = (Bun.file(path).writer as (opts?: S3Options) => ReturnType<S3File["writer"]>)(options);
+  const sink = (
+    Bun.file(path).writer as (opts?: S3Options) => ReturnType<S3File["writer"]>
+  )(options);
 
   return {
     write: (chunk) => sink.write(chunk),
@@ -297,7 +378,9 @@ function buildNetworkSink(path: string, options?: S3Options): LocalNetworkSink {
 
 function decorateSliceBlob(blob: Blob, parent: LocalS3File): S3File {
   const sliceBlob = blob as Blob & Partial<S3File>;
-  const nativeSlice = (blob as unknown as { slice: (...args: unknown[]) => Blob }).slice.bind(blob);
+  const nativeSlice = (
+    blob as unknown as { slice: (...args: unknown[]) => Blob }
+  ).slice.bind(blob);
 
   Object.defineProperty(sliceBlob, "name", {
     get: () => parent.name,
@@ -316,7 +399,8 @@ function decorateSliceBlob(blob: Blob, parent: LocalS3File): S3File {
   });
 
   Object.defineProperty(sliceBlob, "write", {
-    value: (data: S3WriteData, options?: S3Options) => parent.write(data, options),
+    value: (data: S3WriteData, options?: S3Options) =>
+      parent.write(data, options),
   });
 
   Object.defineProperty(sliceBlob, "delete", {
@@ -340,7 +424,8 @@ function decorateSliceBlob(blob: Blob, parent: LocalS3File): S3File {
   });
 
   Object.defineProperty(sliceBlob, "slice", {
-    value: (...args: unknown[]) => decorateSliceBlob(nativeSlice(...args), parent),
+    value: (...args: unknown[]) =>
+      decorateSliceBlob(nativeSlice(...args), parent),
   });
 
   return sliceBlob as S3File;
@@ -353,7 +438,13 @@ class LocalS3File extends Blob {
   readonly #path: string;
   readonly #options?: S3Options;
 
-  constructor(client: LocalS3Client, key: string, bucketName: string, path: string, options?: S3Options) {
+  constructor(
+    client: LocalS3Client,
+    key: string,
+    bucketName: string,
+    path: string,
+    options?: S3Options,
+  ) {
     super();
     this.#client = client;
     this.#key = key;
@@ -364,7 +455,9 @@ class LocalS3File extends Blob {
 
   #bunFile() {
     if (this.#options?.type) {
-      return Bun.file(this.#path, { type: this.#options.type } as BlobPropertyBag);
+      return Bun.file(this.#path, {
+        type: this.#options.type,
+      } as BlobPropertyBag);
     }
 
     return Bun.file(this.#path);
@@ -449,7 +542,10 @@ class LocalS3File extends Blob {
   }
 
   write(data: S3WriteData, options?: S3Options): Promise<number> {
-    return this.#client.write(this.#key, data, { ...this.#options, ...options });
+    return this.#client.write(this.#key, data, {
+      ...this.#options,
+      ...options,
+    });
   }
 
   presign(options?: S3FilePresignOptions): string {
@@ -471,14 +567,24 @@ class LocalS3File extends Blob {
 
 export class LocalS3Client implements Pick<
   S3Client,
-  "file" | "write" | "presign" | "unlink" | "delete" | "size" | "exists" | "stat" | "list"
+  | "file"
+  | "write"
+  | "presign"
+  | "unlink"
+  | "delete"
+  | "size"
+  | "exists"
+  | "stat"
+  | "list"
 > {
   readonly #root: string;
   readonly #defaults: S3Options;
 
   constructor(options: LocalS3Options = {}) {
     const { root, ...s3Defaults } = options;
-    this.#root = resolve(root ?? process.env.LOCAL_S3_ROOT ?? DEFAULT_LOCAL_S3_ROOT);
+    this.#root = resolve(
+      root ?? process.env.LOCAL_S3_ROOT ?? DEFAULT_LOCAL_S3_ROOT,
+    );
     this.#defaults = s3Defaults;
   }
 
@@ -495,21 +601,35 @@ export class LocalS3Client implements Pick<
   }
 
   #resolveBucketName(options?: S3Options): string {
-    return options?.bucket ?? this.#defaults.bucket ?? process.env.S3_BUCKET ?? process.env.AWS_BUCKET ?? DEFAULT_LOCAL_BUCKET;
+    return (
+      options?.bucket ??
+      this.#defaults.bucket ??
+      process.env.S3_BUCKET ??
+      process.env.AWS_BUCKET ??
+      DEFAULT_LOCAL_BUCKET
+    );
   }
 
   #resolveBucketRoot(options?: S3Options): string {
     return resolve(this.#root, this.#resolveBucketName(options));
   }
 
-  #resolvePath(path: string, options?: S3Options): { key: string; bucket: string; fullPath: string } {
+  #resolvePath(
+    path: string,
+    options?: S3Options,
+  ): { key: string; bucket: string; fullPath: string } {
     const key = assertObjectKey(path);
     const bucket = this.#resolveBucketName(options);
     const bucketRoot = resolve(this.#root, bucket);
     const fullPath = resolve(bucketRoot, key);
 
-    if (fullPath !== bucketRoot && !fullPath.startsWith(`${bucketRoot}${sep}`)) {
-      throw new Error(`LocalS3Client rejected path traversal attempt for key: ${path}`);
+    if (
+      fullPath !== bucketRoot &&
+      !fullPath.startsWith(`${bucketRoot}${sep}`)
+    ) {
+      throw new Error(
+        `LocalS3Client rejected path traversal attempt for key: ${path}`,
+      );
     }
 
     return { key, bucket, fullPath };
@@ -518,16 +638,28 @@ export class LocalS3Client implements Pick<
   file(path: string, options?: S3Options): S3File {
     const merged = this.#mergeOptions(options);
     const { key, bucket, fullPath } = this.#resolvePath(path, merged);
-    return new LocalS3File(this, key, bucket, fullPath, merged) as unknown as S3File;
+    return new LocalS3File(
+      this,
+      key,
+      bucket,
+      fullPath,
+      merged,
+    ) as unknown as S3File;
   }
 
-  async write(path: string, data: S3WriteData, options?: S3Options): Promise<number> {
+  async write(
+    path: string,
+    data: S3WriteData,
+    options?: S3Options,
+  ): Promise<number> {
     const merged = this.#mergeOptions(options);
     const { fullPath } = this.#resolvePath(path, merged);
 
     await mkdir(dirname(fullPath), { recursive: true });
 
-    const target = merged.type ? Bun.file(fullPath, { type: merged.type } as BlobPropertyBag) : Bun.file(fullPath);
+    const target = merged.type
+      ? Bun.file(fullPath, { type: merged.type } as BlobPropertyBag)
+      : Bun.file(fullPath);
     return Bun.write(target as unknown as string, data as never);
   }
 
@@ -580,7 +712,10 @@ export class LocalS3Client implements Pick<
     };
   }
 
-  async list(input?: S3ListObjectsOptions | null, options?: S3ListCredentials): Promise<S3ListObjectsResponse> {
+  async list(
+    input?: S3ListObjectsOptions | null,
+    options?: S3ListCredentials,
+  ): Promise<S3ListObjectsResponse> {
     const listInput = input ?? {};
     const bucket = this.#resolveBucketName(options);
     const bucketRoot = this.#resolveBucketRoot(options);
@@ -606,7 +741,8 @@ export class LocalS3Client implements Pick<
       .sort((a, b) => a.localeCompare(b));
 
     const contents: NonNullable<S3ListObjectsResponse["contents"]> = [];
-    const commonPrefixes: NonNullable<S3ListObjectsResponse["commonPrefixes"]> = [];
+    const commonPrefixes: NonNullable<S3ListObjectsResponse["commonPrefixes"]> =
+      [];
     const seenCommonPrefixes = new Set<string>();
 
     let itemsCount = 0;
@@ -629,7 +765,9 @@ export class LocalS3Client implements Pick<
 
           if (itemsCount >= maxKeys) {
             isTruncated = true;
-            nextContinuationToken = encodeContinuationToken(lastIncludedKey ?? key);
+            nextContinuationToken = encodeContinuationToken(
+              lastIncludedKey ?? key,
+            );
             break;
           }
 
@@ -678,9 +816,15 @@ export class LocalS3Client implements Pick<
   }
 }
 
-export function createClient(provider: "local", options?: LocalS3Options): LocalS3Client;
+export function createClient(
+  provider: "local",
+  options?: LocalS3Options,
+): LocalS3Client;
 export function createClient(provider: "cloud", options?: S3Options): S3Client;
-export function createClient(provider: "local" | "cloud", options?: LocalS3Options | S3Options) {
+export function createClient(
+  provider: "local" | "cloud",
+  options?: LocalS3Options | S3Options,
+) {
   if (provider === "local") {
     return new LocalS3Client(options as LocalS3Options | undefined);
   }

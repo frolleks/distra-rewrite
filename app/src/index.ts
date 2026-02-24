@@ -3,6 +3,7 @@ import index from "./client/index.html";
 import { auth } from "./server/auth";
 import { uploadsHandler } from "./server/api/routes/uploads";
 import { getVideo, postVideo } from "./server/api/routes/videos";
+import { cdnGetVideo } from "./server/api/routes/cdn";
 
 const server = serve({
   routes: {
@@ -37,6 +38,8 @@ const server = serve({
 
     "/api/videos": async (req) => postVideo(req),
     "/api/videos/:id": async (req) => getVideo(req),
+
+    "/api/cdn/video/:id": async (req) => cdnGetVideo(req),
   },
 
   development: process.env.NODE_ENV !== "production" && {

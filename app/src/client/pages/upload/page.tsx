@@ -21,9 +21,10 @@ export default function Upload() {
   const handleUpload = async (
     e: React.ChangeEvent<HTMLInputElement, HTMLInputElement>,
   ) => {
-    if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0]);
-    }
+    const selectedFile = e.target.files?.[0];
+    if (!selectedFile) return;
+
+    setFile(selectedFile);
 
     const res = await fetch("/api/upload");
 
@@ -32,7 +33,7 @@ export default function Upload() {
 
       await fetch(url, {
         method: "PUT",
-        body: await file?.arrayBuffer(),
+        body: await selectedFile.arrayBuffer(),
         headers: {
           "content-type": "video/mp4",
         },
