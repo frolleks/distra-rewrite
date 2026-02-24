@@ -10,6 +10,6 @@ This project is rewritten to minimize vibecoded code, like those in the predeces
 git clone https://github.com/frolleks/distra-rewrite && cd distra-rewrite
 bun install
 bun run bootstrap
-cd app && bun run db:migrate && cd ..
+bun run db:migrate
 bun run dev
 ```
